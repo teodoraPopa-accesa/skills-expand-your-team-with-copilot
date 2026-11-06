@@ -45,6 +45,7 @@ initial_activities = {
     },
     "Programming Class": {
         "description": "Learn programming fundamentals and build software projects",
+        "difficulty": "Beginner",
         "schedule": "Tuesdays and Thursdays, 7:00 AM - 8:00 AM",
         "schedule_details": {
             "days": ["Tuesday", "Thursday"],
@@ -132,6 +133,7 @@ initial_activities = {
     },
     "Debate Team": {
         "description": "Develop public speaking and argumentation skills",
+        "difficulty": "Intermediate",
         "schedule": "Fridays, 3:30 PM - 5:30 PM",
         "schedule_details": {
             "days": ["Friday"],
@@ -165,6 +167,7 @@ initial_activities = {
     },
     "Sunday Chess Tournament": {
         "description": "Weekly tournament for serious chess players with rankings",
+        "difficulty": "Advanced",
         "schedule": "Sundays, 2:00 PM - 5:00 PM",
         "schedule_details": {
             "days": ["Sunday"],
