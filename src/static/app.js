@@ -25,6 +25,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const closeLoginModal = document.querySelector(".close-login-modal");
   const loginMessage = document.getElementById("login-message");
   const themeToggle = document.getElementById("theme-toggle");
+  const viewToggle = document.getElementById("view-toggle");
+  let currentView = localStorage.getItem("activityView") || "card";
 
   function setTheme(theme) {
     const isDark = theme === "dark";
@@ -483,9 +485,169 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Display filtered activities
+    activitiesList.classList.toggle("calendar-mode", currentView === "calendar");
+    if (currentView === "calendar") {
+      renderCalendar(filteredActivities);
+      return;
+    }
     Object.entries(filteredActivities).forEach(([name, details]) => {
       renderActivityCard(name, details);
     });
+  }
+
+  function setView(view) {
+    currentView = view;
+    localStorage.setItem("activityView", view);
+    viewToggle.textContent =
+      view === "calendar" ? "🗂️ Card view" : "📅 Calendar view";
+    viewToggle.setAttribute("aria-pressed", view === "calendar");
+    displayFilteredActivities();
+  }
+
+  viewToggle.addEventListener("click", () => {
+    setView(currentView === "calendar" ? "card" : "calendar");
+  });
+  viewToggle.textContent =
+    currentView === "calendar" ? "🗂️ Card view" : "📅 Calendar view";
+  viewToggle.setAttribute("aria-pressed", currentView === "calendar");
+
+  function timeToMinutes(time) {
+    const [hours, minutes] = time.split(":").map(Number);
+    return hours * 60 + minutes;
+  }
+
+  // Place overlapping entries side by side by giving each a column
+  function assignColumns(entries) {
+    entries.sort((a, b) => a.start - b.start || a.end - b.end);
+    let group = [];
+    let groupEnd = 0;
+    const finishGroup = () => {
+      const columnCount = Math.max(...group.map((e) => e.column)) + 1;
+      group.forEach((e) => (e.columnCount = columnCount));
+    };
+    entries.forEach((entry) => {
+      if (group.length && entry.start >= groupEnd) {
+        finishGroup();
+        group = [];
+      }
+      const used = group
+        .filter((e) => e.end > entry.start)
+        .map((e) => e.column);
+      let column = 0;
+      while (used.includes(column)) column++;
+      entry.column = column;
+      group.push(entry);
+      groupEnd = Math.max(groupEnd, entry.end);
+    });
+    if (group.length) finishGroup();
+  }
+
+  // Render a one-week calendar (Sunday to Saturday, time top to bottom)
+  function renderCalendar(activities) {
+    const days = [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ];
+    const hourHeight = 50;
+    const byDay = Object.fromEntries(days.map((d) => [d, []]));
+    let earliest = 24 * 60;
+    let latest = 0;
+
+    Object.entries(activities).forEach(([name, details]) => {
+      const schedule = details.schedule_details;
+      if (!schedule) return;
+      const start = timeToMinutes(schedule.start_time);
+      const end = Math.max(timeToMinutes(schedule.end_time), start + 30);
+      earliest = Math.min(earliest, start);
+      latest = Math.max(latest, end);
+      schedule.days.forEach((day) => {
+        if (byDay[day]) byDay[day].push({ name, details, start, end });
+      });
+    });
+
+    if (latest === 0) {
+      activitiesList.innerHTML = `
+        <div class="no-results">
+          <h4>No scheduled activities to show</h4>
+        </div>
+      `;
+      return;
+    }
+
+    const firstHour = Math.floor(earliest / 60);
+    const lastHour = Math.ceil(latest / 60);
+    const gridHeight = (lastHour - firstHour) * hourHeight;
+
+    const calendar = document.createElement("div");
+    calendar.className = "calendar";
+
+    const header = document.createElement("div");
+    header.className = "calendar-header";
+    header.innerHTML =
+      '<div class="calendar-corner"></div>' +
+      days.map((d) => `<div class="calendar-day-name">${d}</div>`).join("");
+    calendar.appendChild(header);
+
+    const body = document.createElement("div");
+    body.className = "calendar-body";
+
+    const timeColumn = document.createElement("div");
+    timeColumn.className = "calendar-times";
+    timeColumn.style.height = `${gridHeight}px`;
+    for (let h = firstHour; h < lastHour; h++) {
+      const label = document.createElement("div");
+      label.className = "calendar-time-label";
+      label.style.height = `${hourHeight}px`;
+      label.textContent = `${String(h).padStart(2, "0")}:00`;
+      timeColumn.appendChild(label);
+    }
+    body.appendChild(timeColumn);
+
+    days.forEach((day) => {
+      const column = document.createElement("div");
+      column.className = "calendar-day";
+      column.style.height = `${gridHeight}px`;
+      column.style.backgroundSize = `100% ${hourHeight}px`;
+
+      const entries = byDay[day];
+      assignColumns(entries);
+      entries.forEach((entry) => {
+        const type = getActivityType(entry.name, entry.details.description);
+        const colors = activityTypes[type] || {};
+        const el = document.createElement("div");
+        el.className = "calendar-entry";
+        el.style.top = `${((entry.start - firstHour * 60) / 60) * hourHeight}px`;
+        el.style.height = `${((entry.end - entry.start) / 60) * hourHeight}px`;
+        el.style.width = `${100 / entry.columnCount}%`;
+        el.style.left = `${(entry.column * 100) / entry.columnCount}%`;
+        if (colors.color) {
+          el.style.backgroundColor = colors.color;
+          el.style.color = colors.textColor;
+        }
+        const enrolled = entry.details.participants.length;
+        const max = entry.details.max_participants;
+        const schedule = entry.details.schedule_details;
+        el.title =
+          `${entry.name}\n${entry.details.description}\n` +
+          `${schedule.start_time} - ${schedule.end_time}\n` +
+          `Enrolled: ${enrolled}/${max}`;
+        const nameEl = document.createElement("strong");
+        nameEl.textContent = entry.name;
+        const countEl = document.createElement("span");
+        countEl.textContent = `${enrolled}/${max}`;
+        el.append(nameEl, countEl);
+        column.appendChild(el);
+      });
+      body.appendChild(column);
+    });
+
+    calendar.appendChild(body);
+    activitiesList.appendChild(calendar);
   }
 
   // Function to render a single activity card
